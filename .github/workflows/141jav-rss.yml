@@ -1,0 +1,66 @@
+name: 114JAV RSS Update
+
+on:
+  schedule:
+    # 每天早上 6 点运行 (北京时间下午2点 = UTC 6点)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  rss:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 feedgen lxml pytz langdetect
+      
+      - name: Create output directory
+        run: mkdir -p xml
+      
+      - name: Run RSS script
+        env:
+          TZ: Asia/Shanghai
+        run: python 114jav_rss.py
+      
+      - name: Commit and push RSS file
+        id: commit
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git add xml/114jav-torrent-rss.xml
+            git commit -m "Update RSS feed - $(date '+%Y-%m-%d %H:%M')"
+            git push
+            echo "committed=true" >> $GITHUB_OUTPUT
+          else
+            echo "committed=false" >> $GITHUB_OUTPUT
+            echo "No changes to commit"
+          fi
+      
+      - name: Upload RSS artifact
+        if: steps.commit.outputs.committed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-feed
+          path: xml/114jav-torrent-rss.xml
+          retention-days: 7
